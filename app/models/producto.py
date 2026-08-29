@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Integer, String
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -26,6 +26,7 @@ class Producto(Base):
     estado: Mapped[str] = mapped_column(String(10), nullable=False, default=ESTADO_DISPONIBLE)
     sabor: Mapped[str | None] = mapped_column(String(50), nullable=True)
     tamano: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    imagen_base64: Mapped[str | None] = mapped_column(Text, nullable=True)
     creado_en: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, default=lambda: datetime.now(timezone.utc)
     )

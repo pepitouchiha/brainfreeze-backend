@@ -2,15 +2,17 @@ from __future__ import annotations
 
 from datetime import date, datetime, time
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from sqlalchemy.orm import Session, joinedload
 
+from app.core import config
 from app.core.security import require_auth
 from app.db.session import get_db
 from app.models.mesa import ESTADO_OCUPADA, Mesa
 from app.models.producto import Producto
 from app.models.venta import Venta, VentaItem
 from app.schemas.venta import VentaCreate, VentaOut
+from app.services.sheets_service import sync_venta_to_sheets
 
 router = APIRouter(prefix="/ventas", tags=["ventas"], dependencies=[Depends(require_auth)])
 
@@ -33,7 +35,11 @@ def listar_ventas(
 
 
 @router.post("", response_model=VentaOut, status_code=status.HTTP_201_CREATED)
-def crear_venta(payload: VentaCreate, db: Session = Depends(get_db)) -> Venta:
+def crear_venta(
+    payload: VentaCreate,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+) -> Venta:
     mesa: Mesa | None = None
     if payload.mesa_id is not None:
         mesa = db.get(Mesa, payload.mesa_id)
@@ -78,4 +84,24 @@ def crear_venta(payload: VentaCreate, db: Session = Depends(get_db)) -> Venta:
 
     db.commit()
     db.refresh(venta)
+
+    if config.SHEETS_SYNC_ENABLED:
+        venta_dict = {
+            "id": venta.id,
+            "creado_en": venta.creado_en.isoformat(),
+            "metodo_pago": venta.metodo_pago,
+            "mesa_id": venta.mesa_id,
+            "total": venta.total,
+            "items": [
+                {
+                    "producto_id": item.producto_id,
+                    "cantidad": item.cantidad,
+                    "precio_unitario": item.precio_unitario,
+                    "nombre_producto": productos_por_id[item.producto_id].nombre,
+                }
+                for item in venta.items
+            ],
+        }
+        background_tasks.add_task(sync_venta_to_sheets, venta_dict)
+
     return venta

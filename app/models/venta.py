@@ -8,21 +8,21 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
 
 METODO_EFECTIVO = "efectivo"
-METODO_TARJETA = "tarjeta"
+METODO_TRANSFERENCIA = "transferencia"
 
 
 class Venta(Base):
     __tablename__ = "ventas"
     __table_args__ = (
         CheckConstraint(
-            f"metodo_pago IN ('{METODO_EFECTIVO}', '{METODO_TARJETA}')",
+            f"metodo_pago IN ('{METODO_EFECTIVO}', '{METODO_TRANSFERENCIA}')",
             name="ck_ventas_metodo_pago",
         ),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     mesa_id: Mapped[int | None] = mapped_column(ForeignKey("mesas.id"), nullable=True)
-    metodo_pago: Mapped[str] = mapped_column(String(10), nullable=False)
+    metodo_pago: Mapped[str] = mapped_column(String(20), nullable=False)
     total: Mapped[int] = mapped_column(Integer, nullable=False)
     creado_en: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, default=lambda: datetime.now(timezone.utc)

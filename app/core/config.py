@@ -24,3 +24,13 @@ CORS_ORIGINS: list[str] = [
 JWT_SECRET_KEY: str = os.getenv("JWT_SECRET_KEY", "dev-secret-change-me")
 JWT_ALGORITHM: str = os.getenv("JWT_ALGORITHM", "HS256")
 JWT_EXPIRE_MINUTES: int = int(os.getenv("JWT_EXPIRE_MINUTES", "480"))
+
+SHEETS_SYNC_ENABLED: bool = os.getenv("SHEETS_SYNC_ENABLED", "false").strip().lower() == "true"
+SHEETS_SPREADSHEET_NAME: str = os.getenv("SHEETS_SPREADSHEET_NAME", "BrainFreeze POS")
+SHEETS_WORKSHEET_NAME: str = os.getenv("SHEETS_WORKSHEET_NAME", "Ventas_Diarias")
+SHEETS_CREDENTIALS_FILE: Path = Path(
+    os.getenv("SHEETS_CREDENTIALS_FILE", str(BASE_DIR / "credentials.json"))
+)
+SHEETS_AUTHORIZED_USER_FILE: Path = Path(
+    os.getenv("SHEETS_AUTHORIZED_USER_FILE", str(BASE_DIR / "authorized_user.json"))
+)

@@ -8,7 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 class MetodoPago(str, Enum):
     efectivo = "efectivo"
-    tarjeta = "tarjeta"
+    transferencia = "transferencia"
 
 
 class VentaItemCreate(BaseModel):

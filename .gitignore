@@ -4,3 +4,5 @@ __pycache__/
 venv/
 brainfreeze.db
 .env
+credentials.json
+authorized_user.json

@@ -50,6 +50,7 @@ def crear_producto(payload: ProductoCreate, db: Session = Depends(get_db)) -> Pr
         estado=payload.estado.value,
         sabor=payload.sabor,
         tamano=payload.tamano,
+        imagen_base64=payload.imagen_base64,
     )
     db.add(producto)
     db.commit()
@@ -75,10 +76,14 @@ def actualizar_producto(
         producto.precio = payload.precio
     if payload.estado is not None:
         producto.estado = payload.estado.value
-    if payload.sabor is not None:
+
+    campos_enviados = payload.model_dump(exclude_unset=True)
+    if "sabor" in campos_enviados:
         producto.sabor = payload.sabor
-    if payload.tamano is not None:
+    if "tamano" in campos_enviados:
         producto.tamano = payload.tamano
+    if "imagen_base64" in campos_enviados:
+        producto.imagen_base64 = payload.imagen_base64
 
     db.commit()
     db.refresh(producto)
