@@ -1,20 +1,35 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
+from app.core import config
 from app.core.security import require_auth
 from app.db.session import get_db
 from app.models.categoria import Categoria
 from app.models.insumo import ESTADO_OK, Insumo, calcular_estado
 from app.schemas.insumo import AjusteStock, InsumoCreate, InsumoOut, InsumoUpdate
+from app.services.sheets_service import sync_insumo_to_sheets
 
 router = APIRouter(prefix="/insumos", tags=["insumos"], dependencies=[Depends(require_auth)])
 
 
-def _validar_categoria(db: Session, categoria_id: int) -> None:
-    if db.get(Categoria, categoria_id) is None:
+def _validar_categoria(db: Session, categoria_id: int) -> Categoria:
+    categoria = db.get(Categoria, categoria_id)
+    if categoria is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Categoría no encontrada")
+    return categoria
+
+
+def _insumo_dict_para_sheets(insumo: Insumo, categoria_nombre: str) -> dict[str, object]:
+    return {
+        "id": insumo.id,
+        "nombre": insumo.nombre,
+        "categoria_nombre": categoria_nombre,
+        "stock": insumo.stock,
+        "stock_minimo": insumo.stock_minimo,
+        "estado": calcular_estado(insumo.stock, insumo.stock_minimo),
+    }
 
 
 def _a_out(insumo: Insumo) -> InsumoOut:
@@ -49,8 +64,12 @@ def obtener_insumo(insumo_id: int, db: Session = Depends(get_db)) -> InsumoOut:
 
 
 @router.post("", response_model=InsumoOut, status_code=status.HTTP_201_CREATED)
-def crear_insumo(payload: InsumoCreate, db: Session = Depends(get_db)) -> InsumoOut:
-    _validar_categoria(db, payload.categoria_id)
+def crear_insumo(
+    payload: InsumoCreate,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+) -> InsumoOut:
+    categoria = _validar_categoria(db, payload.categoria_id)
     insumo = Insumo(
         nombre=payload.nombre,
         categoria_id=payload.categoria_id,
@@ -60,18 +79,30 @@ def crear_insumo(payload: InsumoCreate, db: Session = Depends(get_db)) -> Insumo
     db.add(insumo)
     db.commit()
     db.refresh(insumo)
+
+    if config.SHEETS_SYNC_ENABLED:
+        background_tasks.add_task(
+            sync_insumo_to_sheets, _insumo_dict_para_sheets(insumo, categoria.nombre)
+        )
+
     return _a_out(insumo)
 
 
 @router.put("/{insumo_id}", response_model=InsumoOut)
 @router.patch("/{insumo_id}", response_model=InsumoOut)
-def actualizar_insumo(insumo_id: int, payload: InsumoUpdate, db: Session = Depends(get_db)) -> InsumoOut:
+def actualizar_insumo(
+    insumo_id: int,
+    payload: InsumoUpdate,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+) -> InsumoOut:
     insumo = db.get(Insumo, insumo_id)
     if insumo is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Insumo no encontrado")
 
+    categoria: Categoria | None = None
     if payload.categoria_id is not None:
-        _validar_categoria(db, payload.categoria_id)
+        categoria = _validar_categoria(db, payload.categoria_id)
         insumo.categoria_id = payload.categoria_id
     if payload.nombre is not None:
         insumo.nombre = payload.nombre
@@ -80,11 +111,25 @@ def actualizar_insumo(insumo_id: int, payload: InsumoUpdate, db: Session = Depen
 
     db.commit()
     db.refresh(insumo)
+
+    if config.SHEETS_SYNC_ENABLED:
+        categoria_nombre = (
+            categoria.nombre if categoria is not None else _validar_categoria(db, insumo.categoria_id).nombre
+        )
+        background_tasks.add_task(
+            sync_insumo_to_sheets, _insumo_dict_para_sheets(insumo, categoria_nombre)
+        )
+
     return _a_out(insumo)
 
 
 @router.post("/{insumo_id}/ajustar-stock", response_model=InsumoOut)
-def ajustar_stock(insumo_id: int, payload: AjusteStock, db: Session = Depends(get_db)) -> InsumoOut:
+def ajustar_stock(
+    insumo_id: int,
+    payload: AjusteStock,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+) -> InsumoOut:
     insumo = db.get(Insumo, insumo_id)
     if insumo is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Insumo no encontrado")
@@ -98,6 +143,13 @@ def ajustar_stock(insumo_id: int, payload: AjusteStock, db: Session = Depends(ge
     insumo.stock = nuevo_stock
     db.commit()
     db.refresh(insumo)
+
+    if config.SHEETS_SYNC_ENABLED:
+        categoria_nombre = _validar_categoria(db, insumo.categoria_id).nombre
+        background_tasks.add_task(
+            sync_insumo_to_sheets, _insumo_dict_para_sheets(insumo, categoria_nombre)
+        )
+
     return _a_out(insumo)
 
 

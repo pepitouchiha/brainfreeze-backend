@@ -1,16 +1,18 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.core import config
 from app.core.security import require_auth
 from app.db.session import get_db
 from app.models.categoria import Categoria
 from app.models.insumo import Insumo
 from app.models.producto import Producto
 from app.schemas.categoria import CategoriaCreate, CategoriaOut, CategoriaUpdate
+from app.services.sheets_service import sync_categoria_to_sheets
 
 router = APIRouter(prefix="/categorias", tags=["categorias"], dependencies=[Depends(require_auth)])
 
@@ -44,7 +46,11 @@ def listar_categorias(db: Session = Depends(get_db)) -> list[CategoriaOut]:
 
 
 @router.post("", response_model=CategoriaOut, status_code=status.HTTP_201_CREATED)
-def crear_categoria(payload: CategoriaCreate, db: Session = Depends(get_db)) -> CategoriaOut:
+def crear_categoria(
+    payload: CategoriaCreate,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+) -> CategoriaOut:
     existe = db.query(Categoria).filter(Categoria.nombre == payload.nombre).first()
     if existe:
         raise HTTPException(status.HTTP_409_CONFLICT, detail="Ya existe una categoría con ese nombre")
@@ -56,13 +62,25 @@ def crear_categoria(payload: CategoriaCreate, db: Session = Depends(get_db)) -> 
         db.rollback()
         raise HTTPException(status.HTTP_409_CONFLICT, detail="Ya existe una categoría con ese nombre")
     db.refresh(categoria)
+
+    if config.SHEETS_SYNC_ENABLED:
+        categoria_dict = {
+            "id": categoria.id,
+            "nombre": categoria.nombre,
+            "color": categoria.color,
+        }
+        background_tasks.add_task(sync_categoria_to_sheets, categoria_dict)
+
     return _a_out(db, categoria)
 
 
 @router.put("/{categoria_id}", response_model=CategoriaOut)
 @router.patch("/{categoria_id}", response_model=CategoriaOut)
 def actualizar_categoria(
-    categoria_id: int, payload: CategoriaUpdate, db: Session = Depends(get_db)
+    categoria_id: int,
+    payload: CategoriaUpdate,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
 ) -> CategoriaOut:
     categoria = db.get(Categoria, categoria_id)
     if categoria is None:
@@ -87,6 +105,15 @@ def actualizar_categoria(
         db.rollback()
         raise HTTPException(status.HTTP_409_CONFLICT, detail="Ya existe una categoría con ese nombre")
     db.refresh(categoria)
+
+    if config.SHEETS_SYNC_ENABLED:
+        categoria_dict = {
+            "id": categoria.id,
+            "nombre": categoria.nombre,
+            "color": categoria.color,
+        }
+        background_tasks.add_task(sync_categoria_to_sheets, categoria_dict)
+
     return _a_out(db, categoria)
 
 

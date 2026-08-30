@@ -62,9 +62,12 @@ Ver `.env.example`:
 | `JWT_SECRET_KEY`     | Secreto para firmar los tokens JWT — **cambiar en producción**     |
 | `JWT_ALGORITHM`      | Algoritmo de firma (default: `HS256`)                              |
 | `JWT_EXPIRE_MINUTES` | Minutos de validez del token (default: `480`)                      |
-| `SHEETS_SYNC_ENABLED` | Activa la sincronización de ventas a Google Sheets (default: `false`) |
+| `SHEETS_SYNC_ENABLED` | Activa la sincronización a Google Sheets (default: `false`) |
 | `SHEETS_SPREADSHEET_NAME` | Nombre del spreadsheet de Google Sheets (default: `BrainFreeze POS`) |
-| `SHEETS_WORKSHEET_NAME` | Nombre de la hoja dentro del spreadsheet (default: `Ventas_Diarias`) |
+| `SHEETS_WORKSHEET_NAME` | Nombre de la hoja de ventas dentro del spreadsheet (default: `Ventas_Diarias`) |
+| `SHEETS_WORKSHEET_CATEGORIAS` | Nombre de la hoja de categorías dentro del spreadsheet (default: `Categorias`) |
+| `SHEETS_WORKSHEET_PRODUCTOS` | Nombre de la hoja de productos dentro del spreadsheet (default: `Productos`) |
+| `SHEETS_WORKSHEET_INSUMOS` | Nombre de la hoja de insumos dentro del spreadsheet (default: `Insumos`) |
 | `SHEETS_CREDENTIALS_FILE` | Ruta al `credentials.json` de OAuth (default: `credentials.json` en la raíz de `backend/`) |
 | `SHEETS_AUTHORIZED_USER_FILE` | Ruta donde se guarda el token autorizado (default: `authorized_user.json` en la raíz de `backend/`) |
 
@@ -82,14 +85,44 @@ No hay endpoint público de registro. El usuario inicial (y cualquier otro) se c
 .\.venv\Scripts\python -m app.scripts.seed_productos
 ```
 
-## Sincronización de ventas a Google Sheets (backup/dashboard de solo lectura)
+## Sincronización a Google Sheets (backup/dashboard de solo lectura)
 
-Cada venta creada vía `POST /ventas` puede replicarse en segundo plano a una
-hoja de Google Sheets (`Ventas_Diarias`), como backup externo y dashboard de
-solo lectura para el dueño del negocio. Es un backup de mejor esfuerzo, no la
-fuente de verdad — si Sheets no responde, se pierde ese registro puntual y la
-venta sigue quedando en SQLite normalmente. Autenticación OAuth de cuenta
-personal de Gmail (no cuenta de servicio):
+Cada venta creada vía `POST /ventas`, cada categoría creada/actualizada vía
+`POST`/`PUT`/`PATCH /categorias`, cada producto creado/actualizado vía
+`POST`/`PUT`/`PATCH /productos` y cada insumo creado/actualizado/ajustado vía
+`POST`/`PUT`/`PATCH /insumos` y `POST /insumos/{id}/ajustar-stock`, puede
+replicarse en segundo plano a una hoja de Google Sheets dentro del mismo
+spreadsheet, como backup externo y dashboard de solo lectura para el dueño del
+negocio. Es un backup de mejor esfuerzo, no la fuente de verdad — si Sheets no
+responde, se pierde esa sincronización puntual y el registro sigue quedando en
+SQLite normalmente. Autenticación OAuth de cuenta personal de Gmail (no cuenta
+de servicio):
+
+- **Ventas** (`Ventas_Diarias`): log de solo-append, una fila nueva por cada
+  venta creada, nunca se sobrescribe una fila existente.
+- **Categorías** (`Categorias`): una sola fila por categoría, actualizada in
+  place (upsert por ID) cada vez que se crea o edita — no se duplica al
+  editar.
+- **Productos** (`Productos`): una sola fila por producto (columnas `ID
+  Producto`, `Nombre`, `Categoría`, `Precio`, `Estado`, `Sabor`, `Tamaño`),
+  mismo mecanismo de upsert por ID que categorías. `imagen_base64` **nunca**
+  se incluye en la hoja (blobs potencialmente grandes, sin valor como backup
+  legible).
+- **Insumos** (`Insumos`): una sola fila por insumo (columnas `ID Insumo`,
+  `Nombre`, `Categoría`, `Stock`, `Stock mínimo`, `Estado`), mismo mecanismo
+  de upsert por ID que categorías/productos. Además de crear/editar el
+  insumo, **`POST /insumos/{id}/ajustar-stock` también dispara la
+  sincronización** (con el `stock` ya ajustado) — es el endpoint que más
+  importa cubrir, porque es el mecanismo principal por el que cambia el
+  stock día a día. `Estado` refleja el mismo cálculo (`Crítico`/`Bajo`/`OK`)
+  que devuelve la API en `InsumoOut.estado`.
+
+Si alguna de estas hojas no existe todavía dentro del spreadsheet, esa
+entidad simplemente no se sincroniza (se loguea un `warning` de
+`WorksheetNotFound`) — `_get_worksheet` solo busca hojas existentes, no las
+crea automáticamente. Crea manualmente cada hoja que necesites dentro del
+spreadsheet `BrainFreeze POS` (o el valor de `SHEETS_SPREADSHEET_NAME`) antes
+de activar la sincronización correspondiente.
 
 1. En [Google Cloud Console](https://console.cloud.google.com/), crea un
    proyecto (o reutiliza uno) y genera credenciales **OAuth client ID** tipo
@@ -105,13 +138,16 @@ personal de Gmail (no cuenta de servicio):
    ```
 
    Esto genera `backend/authorized_user.json` (también en `.gitignore`), que
-   el backend reutiliza en cada venta sin volver a interactuar con un
-   navegador.
+   el backend reutiliza en cada sincronización sin volver a interactuar con
+   un navegador.
 3. Activa `SHEETS_SYNC_ENABLED=true` en tu `.env`. Asegúrate de que exista un
    spreadsheet llamado `BrainFreeze POS` (o el valor de
-   `SHEETS_SPREADSHEET_NAME`) con una hoja `Ventas_Diarias` (o el valor de
-   `SHEETS_WORKSHEET_NAME`), compartido/accesible con la cuenta de Gmail que
-   autorizaste.
+   `SHEETS_SPREADSHEET_NAME`), compartido/accesible con la cuenta de Gmail
+   que autorizaste, con una hoja `Ventas_Diarias` (o el valor de
+   `SHEETS_WORKSHEET_NAME`) para ventas, una hoja `Categorias` (o el valor de
+   `SHEETS_WORKSHEET_CATEGORIAS`) para categorías, una hoja `Productos` (o el
+   valor de `SHEETS_WORKSHEET_PRODUCTOS`) para productos y una hoja `Insumos`
+   (o el valor de `SHEETS_WORKSHEET_INSUMOS`) para insumos.
 
 ## Endpoints principales
 

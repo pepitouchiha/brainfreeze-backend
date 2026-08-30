@@ -18,6 +18,8 @@ class ReporteHoyOut(BaseModel):
     total: int
     num_ventas: int
     por_hora: list[VentaPorHora]
+    margen: int
+    margen_incompleto: bool
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -28,6 +30,8 @@ class VentaPorMes(BaseModel):
     total: int
     num_ventas: int
     ticket_promedio: float
+    margen: int
+    margen_incompleto: bool
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -35,5 +39,7 @@ class VentaPorMes(BaseModel):
 class ReporteMensualOut(BaseModel):
     meses: list[VentaPorMes]
     ytd_total: int
+    ytd_margen: int
+    ytd_margen_incompleto: bool
 
     model_config = ConfigDict(from_attributes=True)

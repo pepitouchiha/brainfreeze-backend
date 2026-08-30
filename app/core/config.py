@@ -28,6 +28,9 @@ JWT_EXPIRE_MINUTES: int = int(os.getenv("JWT_EXPIRE_MINUTES", "480"))
 SHEETS_SYNC_ENABLED: bool = os.getenv("SHEETS_SYNC_ENABLED", "false").strip().lower() == "true"
 SHEETS_SPREADSHEET_NAME: str = os.getenv("SHEETS_SPREADSHEET_NAME", "BrainFreeze POS")
 SHEETS_WORKSHEET_NAME: str = os.getenv("SHEETS_WORKSHEET_NAME", "Ventas_Diarias")
+SHEETS_WORKSHEET_CATEGORIAS: str = os.getenv("SHEETS_WORKSHEET_CATEGORIAS", "Categorias")
+SHEETS_WORKSHEET_PRODUCTOS: str = os.getenv("SHEETS_WORKSHEET_PRODUCTOS", "Productos")
+SHEETS_WORKSHEET_INSUMOS: str = os.getenv("SHEETS_WORKSHEET_INSUMOS", "Insumos")
 SHEETS_CREDENTIALS_FILE: Path = Path(
     os.getenv("SHEETS_CREDENTIALS_FILE", str(BASE_DIR / "credentials.json"))
 )

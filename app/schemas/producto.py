@@ -29,6 +29,7 @@ class ProductoCreate(BaseModel):
     nombre: str = Field(min_length=1, max_length=150)
     categoria_id: int
     precio: int = Field(gt=0)
+    costo: int | None = Field(default=None, ge=0)
     estado: EstadoProducto = EstadoProducto.disponible
     sabor: str | None = Field(default=None, max_length=50)
     tamano: str | None = Field(default=None, max_length=50)
@@ -60,6 +61,7 @@ class ProductoUpdate(BaseModel):
     nombre: str | None = Field(default=None, min_length=1, max_length=150)
     categoria_id: int | None = None
     precio: int | None = Field(default=None, gt=0)
+    costo: int | None = Field(default=None, ge=0)
     estado: EstadoProducto | None = None
     sabor: str | None = Field(default=None, max_length=50)
     tamano: str | None = Field(default=None, max_length=50)
@@ -94,6 +96,7 @@ class ProductoOut(BaseModel):
     nombre: str
     categoria_id: int
     precio: int
+    costo: int | None
     estado: EstadoProducto
     sabor: str | None
     tamano: str | None

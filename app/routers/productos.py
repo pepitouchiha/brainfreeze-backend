@@ -1,21 +1,38 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from app.core import config
 from app.core.security import require_auth
 from app.db.session import get_db
 from app.models.categoria import Categoria
 from app.models.producto import Producto
 from app.schemas.producto import ProductoCreate, ProductoOut, ProductoUpdate
+from app.services.sheets_service import sync_producto_to_sheets
 
 router = APIRouter(prefix="/productos", tags=["productos"], dependencies=[Depends(require_auth)])
 
 
-def _validar_categoria(db: Session, categoria_id: int) -> None:
-    if db.get(Categoria, categoria_id) is None:
+def _validar_categoria(db: Session, categoria_id: int) -> Categoria:
+    categoria = db.get(Categoria, categoria_id)
+    if categoria is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Categoría no encontrada")
+    return categoria
+
+
+def _producto_dict_para_sheets(producto: Producto, categoria_nombre: str) -> dict[str, object]:
+    return {
+        "id": producto.id,
+        "nombre": producto.nombre,
+        "categoria_nombre": categoria_nombre,
+        "precio": producto.precio,
+        "costo": producto.costo,
+        "estado": producto.estado,
+        "sabor": producto.sabor,
+        "tamano": producto.tamano,
+    }
 
 
 @router.get("", response_model=list[ProductoOut])
@@ -41,12 +58,17 @@ def obtener_producto(producto_id: int, db: Session = Depends(get_db)) -> Product
 
 
 @router.post("", response_model=ProductoOut, status_code=status.HTTP_201_CREATED)
-def crear_producto(payload: ProductoCreate, db: Session = Depends(get_db)) -> Producto:
-    _validar_categoria(db, payload.categoria_id)
+def crear_producto(
+    payload: ProductoCreate,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+) -> Producto:
+    categoria = _validar_categoria(db, payload.categoria_id)
     producto = Producto(
         nombre=payload.nombre,
         categoria_id=payload.categoria_id,
         precio=payload.precio,
+        costo=payload.costo,
         estado=payload.estado.value,
         sabor=payload.sabor,
         tamano=payload.tamano,
@@ -55,20 +77,30 @@ def crear_producto(payload: ProductoCreate, db: Session = Depends(get_db)) -> Pr
     db.add(producto)
     db.commit()
     db.refresh(producto)
+
+    if config.SHEETS_SYNC_ENABLED:
+        background_tasks.add_task(
+            sync_producto_to_sheets, _producto_dict_para_sheets(producto, categoria.nombre)
+        )
+
     return producto
 
 
 @router.put("/{producto_id}", response_model=ProductoOut)
 @router.patch("/{producto_id}", response_model=ProductoOut)
 def actualizar_producto(
-    producto_id: int, payload: ProductoUpdate, db: Session = Depends(get_db)
+    producto_id: int,
+    payload: ProductoUpdate,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
 ) -> Producto:
     producto = db.get(Producto, producto_id)
     if producto is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Producto no encontrado")
 
+    categoria: Categoria | None = None
     if payload.categoria_id is not None:
-        _validar_categoria(db, payload.categoria_id)
+        categoria = _validar_categoria(db, payload.categoria_id)
         producto.categoria_id = payload.categoria_id
     if payload.nombre is not None:
         producto.nombre = payload.nombre
@@ -84,9 +116,20 @@ def actualizar_producto(
         producto.tamano = payload.tamano
     if "imagen_base64" in campos_enviados:
         producto.imagen_base64 = payload.imagen_base64
+    if "costo" in campos_enviados:
+        producto.costo = payload.costo
 
     db.commit()
     db.refresh(producto)
+
+    if config.SHEETS_SYNC_ENABLED:
+        categoria_nombre = (
+            categoria.nombre if categoria is not None else _validar_categoria(db, producto.categoria_id).nombre
+        )
+        background_tasks.add_task(
+            sync_producto_to_sheets, _producto_dict_para_sheets(producto, categoria_nombre)
+        )
+
     return producto
 
 

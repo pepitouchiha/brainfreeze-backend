@@ -23,6 +23,7 @@ class Producto(Base):
     nombre: Mapped[str] = mapped_column(String(150), nullable=False)
     categoria_id: Mapped[int] = mapped_column(ForeignKey("categorias.id"), nullable=False)
     precio: Mapped[int] = mapped_column(Integer, nullable=False)
+    costo: Mapped[int | None] = mapped_column(Integer, nullable=True, default=None)
     estado: Mapped[str] = mapped_column(String(10), nullable=False, default=ESTADO_DISPONIBLE)
     sabor: Mapped[str | None] = mapped_column(String(50), nullable=True)
     tamano: Mapped[str | None] = mapped_column(String(50), nullable=True)
